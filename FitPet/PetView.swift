@@ -3,19 +3,23 @@ import SwiftUI
 struct PetView: View {
     @EnvironmentObject var petManager: PetManager
     @EnvironmentObject var healthManager: HealthKitManager
+    @EnvironmentObject var advisor: FitnessAdvisorEngine
     @Binding var isTabBarVisible: Bool
-    @State private var isAnimating = false
+    @StateObject private var aiService = AIAdvisorService()
+    @StateObject private var locationWeather = LocationWeatherManager()
     @State private var showOutfitPicker = false
     @State private var lastScrollOffset: CGFloat = 0
+    @State private var companionMessage: String = ""
+    @State private var isThinking = false
     
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
                     petDisplay
-                    petInfo
+                    companionBubble
+                    contextCards
                     outfitShowcase
-                    interactionButtons
                 }
                 .padding()
                 .padding(.bottom, 100)
@@ -35,7 +39,7 @@ struct PetView: View {
                 else if delta > 8 { isTabBarVisible = true }
                 lastScrollOffset = offset
             }
-            .navigationTitle("我的宠物")
+            .navigationTitle("我的伙伴")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {
@@ -53,6 +57,11 @@ struct PetView: View {
             .sheet(isPresented: $showOutfitPicker) {
                 OutfitPickerView()
             }
+            .task {
+                locationWeather.requestPermission()
+                locationWeather.fetchLocationAndWeather()
+                await generateCompanionMessage()
+            }
         }
     }
     
@@ -61,7 +70,7 @@ struct PetView: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [petManager.appearance.accentColor.opacity(0.3), .clear],
+                        colors: [petManager.appearance.accentColor.opacity(0.1), .clear],
                         center: .center,
                         startRadius: 20,
                         endRadius: 100
@@ -70,134 +79,168 @@ struct PetView: View {
                 .frame(width: 200, height: 200)
             
             PetAvatarView(appearance: petManager.appearance, mood: petManager.mood, size: 160, customImage: petManager.customAvatarImage)
-                .scaleEffect(isAnimating ? 1.05 : 1.0)
-                .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: isAnimating)
+                .bounceOnTap()
         }
-        .onAppear { isAnimating = true }
     }
     
-    private var petInfo: some View {
-        VStack(spacing: 8) {
-            Text(petManager.state.name)
-                .font(.title2.bold())
+    private var companionBubble: some View {
+        VStack(spacing: 12) {
+            if isThinking {
+                HStack(spacing: 4) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(.orange.opacity(0.6))
+                            .frame(width: 8, height: 8)
+                            .offset(y: isThinking ? -4 : 4)
+                            .animation(.easeInOut(duration: 0.5).repeatForever().delay(Double(i) * 0.15), value: isThinking)
+                    }
+                }
+                .padding()
+            } else {
+                Text(companionMessage.isEmpty ? petManager.appearance.motivationMessage : companionMessage)
+                    .font(.system(.body, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+            }
             
-            Text(petManager.appearance.motivationMessage)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            HStack(spacing: 20) {
-                VStack {
-                    Text("等级")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(petManager.state.level)")
-                        .font(.title3.bold())
-                }
-                
-                VStack {
-                    Text("心情")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(petManager.mood.expression)
-                        .font(.title3)
-                }
-                
-                VStack {
-                    Text("连续")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(petManager.state.streak)天")
-                        .font(.title3.bold())
-                }
-                
-                VStack {
-                    Text("运动日")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(petManager.state.totalWorkoutDays)")
-                        .font(.title3.bold())
+            Button {
+                Task { await generateCompanionMessage() }
+            } label: {
+                Label("换一句", systemImage: "arrow.clockwise")
+                    .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+            .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+    }
+    
+    private var contextCards: some View {
+        VStack(spacing: 12) {
+            if let weather = locationWeather.weather {
+                GlassCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: weather.isDaylight ? "sun.max.fill" : "moon.stars.fill")
+                            .font(.title2)
+                            .foregroundStyle(weather.isDaylight ? .orange : .indigo)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(weather.summary)
+                                .font(.subheadline.weight(.medium))
+                            Text(locationWeather.cityName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(String(format: "%.0f°C", weather.temperature))
+                                .font(.title3.weight(.semibold))
+                            Text("体感 \(String(format: "%.0f°", weather.feelsLike))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             
-            ProgressView(value: petManager.state.levelProgress)
-                .tint(.orange)
-                .padding(.horizontal, 40)
-            Text("经验值 \(petManager.state.experience)/\(petManager.state.expForNextLevel)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "mappin.circle.fill")
+                            .foregroundStyle(.blue)
+                        Text("当地推荐")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(locationWeather.locationFeature.suggestedActivities, id: \.self) { activity in
+                                Text(activity)
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(.blue.opacity(0.08), in: Capsule())
+                            }
+                        }
+                    }
+                }
+            }
+            
+            HStack(spacing: 12) {
+                MiniInfoCard(icon: "star.fill", value: "Lv.\(petManager.state.level)", color: .orange)
+                MiniInfoCard(icon: "flame.fill", value: "\(petManager.state.streak)天", color: .red)
+                MiniInfoCard(icon: "figure.run", value: "\(petManager.state.totalWorkoutDays)次", color: .green)
+            }
         }
     }
     
     private var outfitShowcase: some View {
-        VStack(spacing: 8) {
+        GlassCard {
             HStack {
                 Image(systemName: "tshirt.fill")
                     .foregroundStyle(petManager.appearance.accentColor)
-                Text("当前装扮: \(petManager.appearance.accessoryName)")
-                    .font(.subheadline)
-            }
-            
-            if petManager.state.currentOutfit != .none {
-                Text("来自今日 \(petManager.state.currentOutfit.displayName) 运动")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("当前装扮: \(petManager.appearance.accessoryName)")
+                        .font(.subheadline)
+                    if petManager.state.currentOutfit != .none {
+                        Text("来自今日\(petManager.state.currentOutfit.displayName)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
             }
         }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
     
-    private var interactionButtons: some View {
-        HStack(spacing: 12) {
-            InteractionButton(icon: "hand.wave.fill", label: "摸摸", color: .orange) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                    petManager.interact(action: .pet)
-                }
-            }
-            
-            InteractionButton(icon: "carrot.fill", label: "喂食", color: .green) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                    petManager.interact(action: .feed)
-                }
-            }
-            
-            InteractionButton(icon: "gamecontroller.fill", label: "玩耍", color: .purple) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                    petManager.interact(action: .play)
-                }
-            }
+    private func generateCompanionMessage() async {
+        isThinking = true
+        
+        let context = AIContext(
+            steps: healthManager.todayData.steps,
+            heartRate: healthManager.todayData.heartRate,
+            sleepHours: healthManager.todayData.sleepHours,
+            recoveryScore: healthManager.todayData.recoveryScore,
+            todayWorkoutMinutes: healthManager.todayData.workouts.reduce(0) { $0 + $1.durationMinutes },
+            todayWorkoutTypes: healthManager.todayData.workouts.map(\.type.displayName),
+            weather: locationWeather.weather,
+            cityName: locationWeather.cityName,
+            locationFeature: locationWeather.locationFeature,
+            currentHour: Calendar.current.component(.hour, from: .now),
+            streak: petManager.state.streak
+        )
+        
+        let message = await aiService.getAdvice(context: context)
+        
+        await MainActor.run {
+            companionMessage = message
+            isThinking = false
         }
-        .buttonStyle(.plain)
     }
 }
 
-struct InteractionButton: View {
+struct MiniInfoCard: View {
     let icon: String
-    let label: String
+    let value: String
     let color: Color
-    let action: () -> Void
-    @State private var tapped = false
     
     var body: some View {
-        Button {
-            tapped = true
-            action()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { tapped = false }
-        } label: {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .scaleEffect(tapped ? 1.3 : 1.0)
-                Text(label)
-                    .font(.caption)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(color.opacity(tapped ? 0.25 : 0.1), in: RoundedRectangle(cornerRadius: 14))
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(color)
+            Text(value)
+                .font(.system(.caption, design: .rounded, weight: .semibold))
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.5), value: tapped)
-        .sensoryFeedback(.impact(weight: .light), trigger: tapped)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }

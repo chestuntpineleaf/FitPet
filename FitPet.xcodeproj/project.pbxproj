@@ -399,6 +399,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "拍照用于生成你的专属宠物卡通形象";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FitPet需要你的位置来获取天气和推荐当地特色运动";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitPet需要读取你的健康数据来分析运动状态、提供每日建议，并让你的宠物根据运动类型变装。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "FitPet需要写入健康数据以记录你的活动。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "选取照片用于生成你的专属宠物卡通形象";
@@ -442,6 +443,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "拍照用于生成你的专属宠物卡通形象";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FitPet需要你的位置来获取天气和推荐当地特色运动";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "FitPet需要读取你的健康数据来分析运动状态、提供每日建议，并让你的宠物根据运动类型变装。";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "FitPet需要写入健康数据以记录你的活动。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "选取照片用于生成你的专属宠物卡通形象";

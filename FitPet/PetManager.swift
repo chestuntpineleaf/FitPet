@@ -128,18 +128,9 @@ class PetManager: ObservableObject {
         save()
     }
     
-    func interact(action: PetInteraction) {
-        switch action {
-        case .pet:
-            state.happiness = min(100, state.happiness + 5)
-            addExperience(points: 2)
-        case .feed:
-            state.happiness = min(100, state.happiness + 3)
-            addExperience(points: 1)
-        case .play:
-            state.happiness = min(100, state.happiness + 8)
-            addExperience(points: 3)
-        }
+    func boostMoodFromInteraction() {
+        state.happiness = min(100, state.happiness + 3)
+        addExperience(points: 1)
         save()
     }
     
@@ -202,8 +193,4 @@ class PetManager: ObservableObject {
     }
 }
 
-enum PetInteraction {
-    case pet
-    case feed
-    case play
-}
+
