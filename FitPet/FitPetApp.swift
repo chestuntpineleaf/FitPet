@@ -1,32 +1,29 @@
-//
-//  FitPetApp.swift
-//  FitPet
-//
-//  Created by lisongye on 2026/5/9.
-//
-
 import SwiftUI
-import SwiftData
 
 @main
 struct FitPetApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
-
+    @StateObject private var healthManager = HealthKitManager()
+    @StateObject private var petManager = PetManager()
+    @StateObject private var advisorEngine = FitnessAdvisorEngine()
+    @AppStorage("has_completed_onboarding") private var hasCompletedOnboarding = false
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if hasCompletedOnboarding {
+                MainTabView()
+                    .environmentObject(healthManager)
+                    .environmentObject(petManager)
+                    .environmentObject(advisorEngine)
+                    .task {
+                        await healthManager.checkAndRequestIfNeeded()
+                        await healthManager.fetchTodayData()
+                        advisorEngine.analyze(healthData: healthManager.todayData)
+                        petManager.updateAppearance(for: healthManager.todayData.latestWorkoutType)
+                    }
+            } else {
+                OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+                    .environmentObject(healthManager)
+            }
         }
-        .modelContainer(sharedModelContainer)
     }
 }
